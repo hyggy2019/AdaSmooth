@@ -1,0 +1,24 @@
+exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
+
+# experiment options
+func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic"
+seed: 456
+dimension: 5000
+num_iterations: 2000
+optimizers: # multiple optimizers for fair comparison, valid for "fo", "zo", "rl", "rl_w_hoistory", "relizo"
+  - fo
+  - zo
+
+# optimization options
+lr: 0.01
+betas: # momentum for first / second moment
+  - 0.9
+  - 0.99
+epsilon: 1.0e-8 # epsilon
+
+# ---- # for ZO algorithm
+num_queries: 10 # number of query samples
+variance: 0.1 # variance
+
+# ---- # for RL RL w/ hiatory algorithm
+num_histories: 15 # number of histories

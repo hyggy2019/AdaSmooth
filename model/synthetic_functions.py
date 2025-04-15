@@ -1,0 +1,97 @@
+import torch
+import torch.nn as nn
+
+class SyntheticFunction(nn.Module):
+    def __init__(
+        self,
+        x_init: torch.Tensor
+    ):
+        super(SyntheticFunction, self).__init__()
+        
+        assert len(x_init.shape) == 1, "x_init must be a 1D tensor"
+
+        self.dim = x_init.shape[0]
+        self.x = torch.nn.Parameter(x_init.clone())
+
+class Levy(SyntheticFunction):
+    def __init__(
+        self,
+        x_init: torch.Tensor
+    ):
+        super(Levy, self).__init__(x_init)
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+        d = self.dim
+        w = 1 + (x - 1) / 4
+
+        term1 = torch.sin(torch.pi * w[0]) ** 2
+        term2 = ((w[-1] - 1) ** 2) * (1 + torch.sin(2 * torch.pi * w[-1]) ** 2)
+        term3 = torch.sum((w[:-1] - 1) ** 2 * (1 + 10 * torch.sin(torch.pi * w[:-1] + 1) ** 2))
+
+        return term1 + term2 + term3
+    
+class Rosenbrock(SyntheticFunction):
+    def __init__(
+        self,
+        x_init: torch.Tensor
+    ):
+        super(Rosenbrock, self).__init__(x_init)
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+
+        term1 = 100 * (x[1:] - x[:-1] ** 2) ** 2
+        term2 = (1 - x[:-1]) ** 2
+        
+        return torch.sum(term1 + term2)
+    
+class Arcley(SyntheticFunction):
+    def __init__(
+        self,
+        x_init: torch.Tensor
+    ):
+        super(Arcley, self).__init__(x_init)
+        self.a = 20
+        self.b = 0.2
+        self.c = 2 * torch.pi
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+        a, b, c = self.a, self.b, self.c
+        d = self.dim
+
+        term1 = - a * torch.exp(-b * torch.sqrt(torch.sum(x ** 2) / d))
+        term2 = - torch.exp(torch.sum(torch.cos(c * x)) / d)
+        return term1 - term2 + a + torch.e
+
+
+class Quadratic(SyntheticFunction):
+    def __init__(
+        self,
+        x_init: torch.Tensor
+    ):
+        super(Quadratic, self).__init__(x_init)
+
+        self.W = torch.randn(self.dim, self.dim)
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+        W = self.W
+
+        return torch.dot(x, torch.matmul(W, x)) / 2
+
+def get_synthetic_funcs(
+    name: str,
+    x_init: torch.Tensor
+) -> SyntheticFunction:
+    
+    all_functions = {
+        "arcley": Arcley,
+        "levy": Levy,
+        "rosenbrock": Rosenbrock
+    }
+
+    assert name in all_functions, f"Function {name} not found. Available functions: {list(all_functions.keys())}"
+    
+    return all_functions[name](x_init)
