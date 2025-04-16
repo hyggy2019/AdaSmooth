@@ -11,7 +11,7 @@ class SyntheticFunction(nn.Module):
         assert len(x_init.shape) == 1, "x_init must be a 1D tensor"
 
         self.dim = x_init.shape[0]
-        self.x = torch.nn.Parameter(x_init.clone())
+        self.x = torch.nn.Parameter(x_init)
 
 class Levy(SyntheticFunction):
     def __init__(

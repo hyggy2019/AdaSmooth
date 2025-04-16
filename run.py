@@ -3,6 +3,8 @@ import yaml
 import argparse
 from easydict import EasyDict
 from script.run_synthetic import run_synthetic
+from script.run_cutest import run_cutest
+from script.run_adversarial import run_adversarial
 
 def main():
     # parse arguments
@@ -13,15 +15,16 @@ def main():
         args = yaml.safe_load(f)
     args = EasyDict(args)
 
-    assert args.exp in ["synthetic", "cutest", "adversarial", "fine-tuning"]
     if args.exp == "synthetic":
         run_synthetic(args)
     elif args.exp == "cutest":
-        pass
+        run_cutest(args)
     elif args.exp == "adversarial":
-        pass
+        run_adversarial(args)
     elif args.exp == "fine-tuning":
         pass
+    else:
+        raise ValueError(f"Unknown experiment type: {args.exp}. Available options are: synthetic, cutest, adversarial, fine-tuning")
 
 if __name__ == '__main__':
     main()

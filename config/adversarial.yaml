@@ -1,9 +1,12 @@
-exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
+exp: adversarial # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
+device: cpu # only valid for "cuda", "cpu", "mps"
 
 # experiment options
-func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic"
+model: cnn
+dataset: mnist # only valid for "mnist", "cifar10"
+idx: 1 # -1 for random choice
+x_dim: 784 # attack tensor dimension, make sure be equal to image size
 seed: 456
-dimension: 5000
 num_iterations: 2000
 optimizers: # multiple optimizers for fair comparison, valid for "fo", "zo", "rl", "rl_w_hoistory", "relizo"
   - fo

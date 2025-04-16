@@ -1,7 +1,7 @@
 import torch
 from typing import Iterator, Tuple
 
-class Finite_Difference(torch.optim.Optimizer):
+class Reinforcement_Learning_w_History(torch.optim.Optimizer):
     def __init__(
         self,
         params: Iterator[torch.Tensor],
@@ -10,6 +10,7 @@ class Finite_Difference(torch.optim.Optimizer):
         epsilon: float = 1e-8,
         num_queries: int = 10,
         mu: float = 0.01,
+        num_histories: int = 15,
     ):
         if not lr >= 0.0:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -27,6 +28,8 @@ class Finite_Difference(torch.optim.Optimizer):
 
         self.num_queries = num_queries
         self.mu = mu
+        self.num_histories = num_histories
+        self.past = []
 
         defaults = dict(
             lr=lr,
@@ -54,31 +57,33 @@ class Finite_Difference(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self, closure):
-        assert closure is not None, "Closure function is required for finite difference optimization"
+        assert closure is not None, "Closure function is required for reinforcement learning with history optimization"
 
         loss = closure()
 
-        noises = []
-        fs = []
         for _ in range(self.num_queries):
             noise = self._generate_noise()
-            noises.append(noise)
             self._perturb_params(noise, self.mu)
-            f_x_plus_h = closure()
-            fs.append(f_x_plus_h.item())
+            reward = closure()
             self._perturb_params(noise, -self.mu)
 
-        fs = torch.tensor(fs, device=loss.device)
-        # fs_mean = torch.mean(fs) # a large mu should use this one, while a smaller one should use the following one
-        fs_mean = loss
+            self.past.append([noise, reward])
+
+        if len(self.past) > self.num_histories * self.num_queries:
+            self.past = self.past[-self.num_histories * self.num_queries:]
         
-        for noise, f_x_plus_h in zip(noises, fs):
+        noises = [p[0] for p in self.past]
+        rewards = [p[1] for p in self.past]
+        rewards = torch.tensor(rewards, device=loss.device)
+        rewards = rewards - rewards.mean()
+        
+        for noise, reward in zip(noises, rewards):
             for i, group in enumerate(self.param_groups):
                 for param, perturbation in zip(group['params'], noise[i]):
                     if param.grad is None:
-                        param.grad = torch.zeros_like(param)
-                    
-                    param.grad += (f_x_plus_h - fs_mean) / self.mu * perturbation
+                        param.grad = torch.empty_like(param)
+
+                    param.grad += reward / self.mu * perturbation
 
         for group in self.param_groups:
             for param in group['params']:
@@ -86,7 +91,7 @@ class Finite_Difference(torch.optim.Optimizer):
                     continue
 
                 grad = param.grad
-                grad.div_(self.num_queries) # ZO algorithm divide by the number of queries
+                grad.div_(len(rewards)) # rl w/ history algorithm divide by the number of rewards
                 state = self.state[param]
 
                 if len(state) == 0:
@@ -108,4 +113,3 @@ class Finite_Difference(torch.optim.Optimizer):
                 param.add_(-lr * m_hat / (v_hat.sqrt() + epsilon))
 
         return loss
-

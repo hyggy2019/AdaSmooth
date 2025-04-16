@@ -20,7 +20,10 @@ def train(func, optimizer, args):
     for _ in range(1, args.num_iterations + 1):
         optimizer.zero_grad()
         f = optimizer.step(closure)
-        history.append(f.item())
+        
+        if isinstance(f, torch.Tensor):
+            f = f.item()
+        history.append(f)
     
     return history
 
@@ -39,7 +42,7 @@ def run_synthetic(args):
     histories = []
     start = time.time()
     for optimizer_name in optimizers:
-        func = get_synthetic_funcs(func_name, x_init)
+        func = get_synthetic_funcs(func_name, copy.deepcopy(x_init))
         optimizer = get_optimizer(optimizer_name, func.parameters(), args)
 
         start_1 = time.time()

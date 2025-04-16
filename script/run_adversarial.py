@@ -3,19 +3,19 @@ import time
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from model.cutest import CUTESTFunction
+from model.attack import Attack
 from optimizer.tools import get_optimizer
 from utils.tools import set_seed
 
-def train(func, optimizer, args):
+def train(model, optimizer, args):
     def closure():
-        f = func()
+        f = model()
         
         return f
 
     history = []
-    with torch.no_grad():
-        history.append(func().item())
+
+    history.append(model().item())
     
     for _ in range(1, args.num_iterations + 1):
         optimizer.zero_grad()
@@ -27,26 +27,32 @@ def train(func, optimizer, args):
     
     return history
 
-def run_cutest(args):
+def run_adversarial(args):
     seed = args.seed
-    func_name = args.func_name
-    dimension = args.dimension
+    model_name = args.model
+    dataset_name = args.dataset
+    dimension = args.x_dim
+    idx = args.idx
     optimizers = args.optimizers
+    device = args.device
 
     set_seed(seed)
-    device = torch.device("cpu")
+    device = torch.device(device)
     print(f"Using device: {device}")
 
-    x_init = torch.randn(dimension, device=device) * 5
+    x_init = torch.randn(dimension, device=device)
 
     histories = []
     start = time.time()
     for optimizer_name in optimizers:
-        func = CUTESTFunction(func_name, copy.deepcopy(x_init))
-        optimizer = get_optimizer(optimizer_name, func.parameters(), args)
+        model = Attack(copy.deepcopy(x_init), idx=idx)
+        
+        valid_parameters = [p for n, p in model.named_parameters() if n == "x"]
+
+        optimizer = get_optimizer(optimizer_name, valid_parameters, args)
 
         start_1 = time.time()
-        history = train(func, optimizer, args)
+        history = train(model, optimizer, args)
         print(f"{optimizer_name} optimized value: {history[-1]}, Time taken: {time.time() - start_1:.2f} seconds")
 
         histories.append(history)
@@ -58,13 +64,11 @@ def run_cutest(args):
     for i, history in enumerate(histories):
         plt.plot(history, label=optimizers[i])
     plt.xlabel('Iterations', fontsize=12)
-    plt.ylabel(f'{func_name.capitalize()} Function Value', fontsize=12)
-    plt.title(f'Convergence Comparison -- {func_name} -- d = {dimension}', fontsize=16)
+    plt.ylabel(f'{model_name.upper()} Attack Loss Value', fontsize=12)
+    plt.title(f'Convergence Comparison -- {model_name} -- {dataset_name}', fontsize=16)
     plt.legend()
     plt.grid(True)
     plt.show()
-
-
 
 def test_code():
     pass

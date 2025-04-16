@@ -1,7 +1,7 @@
 import torch
 from typing import Iterator, Tuple
 
-class Finite_Difference(torch.optim.Optimizer):
+class Reinforcement_Learning(torch.optim.Optimizer):
     def __init__(
         self,
         params: Iterator[torch.Tensor],
@@ -54,31 +54,35 @@ class Finite_Difference(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self, closure):
-        assert closure is not None, "Closure function is required for finite difference optimization"
+        assert closure is not None, "Closure function is required for reinforcement learning optimization"
 
         loss = closure()
 
         noises = []
-        fs = []
+        rewards = []
         for _ in range(self.num_queries):
             noise = self._generate_noise()
             noises.append(noise)
             self._perturb_params(noise, self.mu)
-            f_x_plus_h = closure()
-            fs.append(f_x_plus_h.item())
+            reward = closure()
+            rewards.append(reward)
             self._perturb_params(noise, -self.mu)
 
-        fs = torch.tensor(fs, device=loss.device)
-        # fs_mean = torch.mean(fs) # a large mu should use this one, while a smaller one should use the following one
-        fs_mean = loss
+        rewards = torch.tensor(rewards, device=loss.device)
+        inds = torch.argsort(rewards)
+        rewards[inds] = 2 * torch.arange(self.num_queries, device=rewards.device, dtype=rewards.dtype)
+        # rewards = np.exp(rewards)
+        rewards = (rewards - rewards.mean())
+        # rewards = np.sign(rewards)
+        # rewards = rewards - func(x_mean)
         
-        for noise, f_x_plus_h in zip(noises, fs):
+        for noise, reward in zip(noises, rewards):
             for i, group in enumerate(self.param_groups):
                 for param, perturbation in zip(group['params'], noise[i]):
                     if param.grad is None:
-                        param.grad = torch.zeros_like(param)
-                    
-                    param.grad += (f_x_plus_h - fs_mean) / self.mu * perturbation
+                        param.grad = torch.empty_like(param)
+
+                    param.grad += reward / self.mu * perturbation
 
         for group in self.param_groups:
             for param in group['params']:
@@ -108,4 +112,3 @@ class Finite_Difference(torch.optim.Optimizer):
                 param.add_(-lr * m_hat / (v_hat.sqrt() + epsilon))
 
         return loss
-

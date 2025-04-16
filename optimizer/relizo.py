@@ -19,7 +19,6 @@ def _backtracking(obj_func, obj_init, x_init, d, init_step=1.0, shrink_rate=0.2,
 
     return step
 
-
 class LIZO(Optimizer):
     ZO = True
     """
@@ -182,8 +181,8 @@ class LIZO(Optimizer):
 #        print('distance', distances)
 #        print('sample_idx', sample_idx)
         self.num_reuse.append(len(sample_idx))
-        if len(sample_idx) > 0: 
-            print(f"Reuse {len(sample_idx)} samples")
+        # if len(sample_idx) > 0: 
+        #     print(f"Reuse {len(sample_idx)} samples")
 
         # random sample (orthogonal) points
         num_random = self.num_sample_per_step - len(sample_idx)

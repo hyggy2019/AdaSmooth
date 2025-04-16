@@ -1,7 +1,7 @@
-exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
+exp: cutest # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
 
 # experiment options
-func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic"
+func_name: BROYDNBDLS # only valid for sip name
 seed: 456
 dimension: 5000
 num_iterations: 2000
@@ -10,7 +10,7 @@ optimizers: # multiple optimizers for fair comparison, valid for "fo", "zo", "rl
   - zo
   - rl
   - rl_w_history
-  - relizo
+  # - relizo
 
 # optimization options
 lr: 0.01
