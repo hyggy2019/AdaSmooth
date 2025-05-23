@@ -7,6 +7,7 @@ This is official implementation for the paper "Zeroth-Order Optimization is Secr
 This project reveals a fundamental connection between Zeroth-Order Optimization (ZOO) and single-step Policy Optimization (PO) in Reinforcement Learning, showing that commonly used ZOO objectives and gradient estimators are mathematically equivalent to their PO counterparts. Building on this insight, we introduce ZoAR, a novel ZOO algorithm that incorporates query reuse and PO-inspired baseline techniques, achieving superior performance across diverse tasks.
 
 ## Dependencies
+
 - Python 3.12
 - PyTorch 2.6
 - NumPy
@@ -20,7 +21,7 @@ For memory-efficient LLM fine-tuning, all necessary packages are provided in the
 
 ```bash
 cd synthetic_and_adversarial
-python run.py --config configs/synthetic.yaml # or configs/adversarial.yaml
+python run.py --config config/synthetic.yaml # or config/adversarial.yaml
 ```
 
 ### Memory-Efficient LLM Fine-Tuning
