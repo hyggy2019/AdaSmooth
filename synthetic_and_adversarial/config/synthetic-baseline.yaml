@@ -1,0 +1,28 @@
+exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
+
+# experiment options
+func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic"
+seed: 456
+dimension: 10000
+num_iterations: 20000
+optimizers: # multiple optimizers for fair comparison, valid for "zoo", "reinforce"
+  - zoo # ZOO Baseline
+  - reinforce # REINFORCE Baseline
+
+# optimization options
+lr: 0.001
+betas: # momentum for first / second moment
+  - 0.9
+  - 0.99
+epsilon: 1.0e-8 # epsilon
+update_rule: radazo # "sgd", "adam", "radazo"
+
+# ---- # for ZO algorithm
+num_queries: 10 # number of query samples
+mu: 0.05 # zo eps
+
+# ---- # for RL RL w/ hiatory algorithm
+num_histories: 0 # number of histories
+
+# ---- # for vanilla, rl baseline
+baseline: average # "single", "average"
