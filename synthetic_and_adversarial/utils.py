@@ -14,7 +14,7 @@ from optimizer.zo import (
     ZOO,
     REINFORCE,
 )
-from synthetic_and_adversarial.optimizer.relizo_adam import LIZO, _backtracking
+from optimizer.relizo_adam import LIZO, _backtracking
 
 def set_seed(seed):
     torch.manual_seed(seed)
