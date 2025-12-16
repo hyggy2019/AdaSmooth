@@ -21,6 +21,8 @@ from optimizer.zo import (
     AdaSmoothZO_MultiParam,
 )
 from optimizer.adasmooth_es import AdaSmoothES
+from optimizer.adasmooth_es_v2 import AdaSmoothESv2
+from optimizer.adaptive_beta_schedulers import get_adaptive_beta_scheduler
 from optimizer.relizo_adam import LIZO, _backtracking
 
 def set_seed(seed):
@@ -142,6 +144,38 @@ def get_optimizer(
         beta_schedule = getattr(args, 'beta_schedule', 'polynomial')
         baseline_type = getattr(args, 'baseline', 'mean')  # Baseline for variance reduction
         ema_alpha = getattr(args, 'ema_alpha', 0.1)  # For EMA baseline
+
+        # Adaptive beta scheduler (new!)
+        # Options: 'std', 'std_decay', 'cma_match', 'entropy_target', 'range'
+        adaptive_beta = getattr(args, 'adaptive_beta', None)
+        adaptive_beta_scheduler = None
+        if adaptive_beta is not None:
+            # Get scheduler parameters
+            c_beta = getattr(args, 'c_beta', 1.0)
+            beta_min = getattr(args, 'beta_min', 1e-8)
+
+            if adaptive_beta in ['std', 'std_based']:
+                adaptive_beta_scheduler = get_adaptive_beta_scheduler(
+                    'std', c_beta=c_beta, beta_min=beta_min
+                )
+            elif adaptive_beta in ['std_decay', 'adaptive_decay']:
+                adaptive_beta_scheduler = get_adaptive_beta_scheduler(
+                    'std_decay', c_beta=c_beta, decay_rate=beta_decay, beta_min=beta_min
+                )
+            elif adaptive_beta in ['cma', 'cma_match']:
+                adaptive_beta_scheduler = get_adaptive_beta_scheduler(
+                    'cma_match', decay_rate=getattr(args, 'cma_decay', 0.0), beta_min=beta_min
+                )
+            elif adaptive_beta in ['entropy', 'entropy_target']:
+                target_ratio = getattr(args, 'target_eff_ratio', 0.5)
+                adaptive_beta_scheduler = get_adaptive_beta_scheduler(
+                    'entropy_target', target_eff_ratio=target_ratio, beta_min=beta_min
+                )
+            elif adaptive_beta in ['range', 'range_based']:
+                adaptive_beta_scheduler = get_adaptive_beta_scheduler(
+                    'range', c_beta=c_beta, beta_min=beta_min
+                )
+
         return AdaSmoothES(
             params=params,
             sigma=sigma,
@@ -150,7 +184,63 @@ def get_optimizer(
             beta_decay=beta_decay,
             beta_schedule=beta_schedule,
             baseline=baseline_type,
-            ema_alpha=ema_alpha
+            ema_alpha=ema_alpha,
+            adaptive_beta_scheduler=adaptive_beta_scheduler
+        )
+    elif name == "adasmooth_es_v2" or name == "adasmoothes_v2":
+        # AdaSmoothES v2: Modular version with pluggable divergences and temperature schedules
+        # Supports: KL, Reverse KL, χ², Rényi, Tsallis, Huber divergences
+        # Supports: constant, linear, exponential, polynomial, cosine, step, adaptive, cyclic schedules
+        sigma = getattr(args, 'sigma', args.mu)  # Initial step size
+        baseline_type = getattr(args, 'baseline', 'mean')  # Baseline for variance reduction
+        ema_alpha = getattr(args, 'ema_alpha', 0.1)  # For EMA baseline
+
+        # Divergence configuration
+        divergence_type = getattr(args, 'divergence', 'kl')  # 'kl', 'reverse_kl', 'chi2', 'renyi', 'tsallis', 'huber'
+        divergence_kwargs = {}
+        if divergence_type == 'renyi':
+            divergence_kwargs['alpha'] = getattr(args, 'renyi_alpha', 2.0)
+        elif divergence_type == 'tsallis':
+            divergence_kwargs['q'] = getattr(args, 'tsallis_q', 2.0)
+        elif divergence_type == 'huber':
+            divergence_kwargs['delta'] = getattr(args, 'huber_delta', 1.0)
+
+        # Temperature schedule configuration
+        temperature_schedule = getattr(args, 'temperature_schedule', 'polynomial')
+        temperature_kwargs = {}
+        temperature_kwargs['beta_init'] = getattr(args, 'beta_init', 10.0)
+
+        if temperature_schedule in ['exponential', 'polynomial']:
+            temperature_kwargs['decay_rate'] = getattr(args, 'beta_decay', 0.001)
+            temperature_kwargs['beta_min'] = getattr(args, 'beta_min', 0.01)
+        if temperature_schedule == 'polynomial':
+            temperature_kwargs['power'] = getattr(args, 'poly_power', 1.0)
+        elif temperature_schedule == 'linear':
+            temperature_kwargs['beta_min'] = getattr(args, 'beta_min', 0.1)
+            temperature_kwargs['total_iterations'] = getattr(args, 'num_iterations', 10000)
+        elif temperature_schedule == 'cosine':
+            temperature_kwargs['beta_min'] = getattr(args, 'beta_min', 0.1)
+            temperature_kwargs['total_iterations'] = getattr(args, 'num_iterations', 10000)
+        elif temperature_schedule == 'step':
+            temperature_kwargs['step_size'] = getattr(args, 'step_size', 1000)
+            temperature_kwargs['gamma'] = getattr(args, 'step_gamma', 0.5)
+            temperature_kwargs['beta_min'] = getattr(args, 'beta_min', 0.01)
+        elif temperature_schedule == 'cyclic':
+            temperature_kwargs['beta_min'] = getattr(args, 'beta_min', 1.0)
+            temperature_kwargs['beta_max'] = getattr(args, 'beta_max', 10.0)
+            temperature_kwargs['cycle_length'] = getattr(args, 'cycle_length', 500)
+            temperature_kwargs['mode'] = getattr(args, 'cyclic_mode', 'triangular')
+
+        return AdaSmoothESv2(
+            params=params,
+            sigma=sigma,
+            num_queries=args.num_queries,
+            divergence=divergence_type,
+            temperature_schedule=temperature_schedule,
+            baseline=baseline_type,
+            ema_alpha=ema_alpha,
+            divergence_kwargs=divergence_kwargs,
+            temperature_kwargs=temperature_kwargs
         )
     else:
-        raise ValueError(f"Unknown optimizer name: {name}, available optimizers are: fo, vanilla, rl, zoar, zohs, zohs_expavg, relizo, zoo, reinforce, es, xnes, twopoint, sepcmaes, adasmooth, adasmooth_multi, adasmooth_es")
+        raise ValueError(f"Unknown optimizer name: {name}, available optimizers are: fo, vanilla, rl, zoar, zohs, zohs_expavg, relizo, zoo, reinforce, es, xnes, twopoint, sepcmaes, adasmooth, adasmooth_multi, adasmooth_es, adasmooth_es_v2")

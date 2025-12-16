@@ -1,0 +1,34 @@
+exp: synthetic # AdaSmoothES optimized for K=24
+
+# experiment options
+func_name: rosenbrock
+seed: 456
+dimension: 1000
+num_iterations: 10000
+optimizers:
+  - adasmooth_es  # AdaSmoothES with adaptive beta scheduler
+
+# optimization options
+lr: 0.001
+betas: [0.9, 0.99]
+epsilon: 1.0e-8
+update_rule: radazo
+
+# ---- ZO parameters
+num_queries: 24  # Medium sample size
+mu: 0.05         # Perturbation parameter
+num_histories: 5 # For filename generation (not used by AdaSmoothES)
+
+# ---- AdaSmoothES BEST CONFIG for K=24
+# Uses Entropy Target for stable effective sample ratio
+adaptive_beta: entropy_target
+target_eff_ratio: 0.3  # Maintain μ_eff/K = 0.3
+
+# Baseline for variance reduction
+baseline: mean
+
+# ---- Performance (Rosenbrock d=1000, 10000 iters):
+# AdaSmoothES: 982.32 ≈ SepCMAES ✅
+# SepCMAES:    982.05
+# Difference:  +0.0% (matches SepCMAES!)
+# Speedup:     +20.4% (22s vs 27.5s)

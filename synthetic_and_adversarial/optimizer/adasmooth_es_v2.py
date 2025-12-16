@@ -1,37 +1,47 @@
 """
-AdaSmoothES: Combining KL-regularized moment matching with Evolution Strategy stability.
+AdaSmoothES v2: Modular version with pluggable divergences and temperature schedules.
 
-Theory:
-- Boltzmann-weighted moment matching (AdaSmooth framework)
-- Diagonal covariance with additive updates (SepCMA stability)
-- Evolution path for cumulative learning
-- CSA for step-size adaptation
-- Baseline for variance reduction
+This version extends the original AdaSmoothES (adasmooth_es.py) with:
+1. Support for different divergence functionals (KL, Reverse KL, χ², Rényi, etc.)
+2. Support for different temperature scheduling strategies
+3. Modular design for easy experimentation
 
-Author: Based on theoretical framework in /home/zlouyang/ZoAR/Docx/AdaSepCMA.md
+Key differences from v1:
+- v1: Hard-coded KL divergence + polynomial temperature schedule
+- v2: Pluggable divergence and schedule objects
+
+Author: Extended from original AdaSmoothES implementation
 """
 
 import math
 import torch
 from typing import Iterator, Optional, Union
 
+from optimizer.divergences import Divergence, get_divergence
+from optimizer.temperature_schedules import TemperatureSchedule, get_temperature_schedule
 
-class AdaSmoothES(torch.optim.Optimizer):
+
+class AdaSmoothESv2(torch.optim.Optimizer):
     """
-    AdaSmoothES: KL-regularized moment matching + Evolution Strategy stability.
+    AdaSmoothES v2: Modular KL-regularized ES with SepCMA stability.
+
+    Solves: min E[F(x)] + (1/β) * D(π || π_ref)
+
+    Where:
+    - F(x): objective function
+    - D: divergence functional (pluggable)
+    - β: temperature (scheduled)
+    - π: search distribution N(θ, σ²·diag(c))
 
     Features:
-    - Boltzmann weights with baseline for numerical stability
-    - Diagonal covariance with additive updates
-    - Evolution path for cumulative learning
+    - Modular divergence (KL, Reverse KL, χ², Rényi, Tsallis, Huber)
+    - Modular temperature scheduling (constant, linear, exponential, etc.)
+    - Diagonal covariance with additive updates (SepCMA-style)
+    - Evolution paths for cumulative learning
     - CSA for step-size adaptation
+    - Baseline for variance reduction
 
-    Theoretical foundation:
-    - Theorem 1: Boltzmann optimal policy
-    - Theorem 2: Diagonal Gaussian projection (moment matching)
-    - Theorem 4: Stabilized update with temporal smoothing
-    - Theorem 5: Evolution path as sufficient statistic
-    - Theorem 6: Baseline for variance reduction
+    Theoretical foundation: See /home/zlouyang/ZoAR/Docx/AdaSepCMA.md
     """
 
     def __init__(
@@ -39,39 +49,83 @@ class AdaSmoothES(torch.optim.Optimizer):
         params: Iterator[torch.Tensor],
         sigma: float = 0.1,
         num_queries: int = 10,
-        beta_init: float = 10.0,
-        beta_decay: float = 0.001,
-        beta_schedule: str = 'polynomial',
-        baseline: str = 'mean',  # 'mean', 'min', 'ema', 'none'
-        ema_alpha: float = 0.1,  # For EMA baseline
-        adaptive_beta_scheduler = None,  # Optional adaptive scheduler
+        divergence: Union[str, Divergence] = 'kl',
+        temperature_schedule: Union[str, TemperatureSchedule] = 'polynomial',
+        baseline: str = 'mean',
+        ema_alpha: float = 0.1,
+        # Divergence parameters
+        divergence_kwargs: Optional[dict] = None,
+        # Temperature schedule parameters
+        temperature_kwargs: Optional[dict] = None,
     ):
         """
         Args:
             params: Parameters to optimize
             sigma: Initial step size
             num_queries: Population size K
-            beta_init: Initial temperature
-            beta_decay: Temperature decay rate
-            beta_schedule: 'constant', 'exponential', 'polynomial'
-            baseline: Baseline type for variance reduction
+            divergence: Divergence type (str or Divergence object)
+                       Options: 'kl', 'reverse_kl', 'chi2', 'renyi', 'tsallis', 'huber'
+            temperature_schedule: Temperature schedule (str or TemperatureSchedule object)
+                                 Options: 'constant', 'linear', 'exponential', 'polynomial',
+                                         'cosine', 'step', 'adaptive', 'cyclic'
+            baseline: Baseline type for variance reduction ('mean', 'min', 'ema', 'none')
             ema_alpha: EMA coefficient for baseline (if baseline='ema')
+            divergence_kwargs: Additional kwargs for divergence (e.g., alpha for Rényi)
+            temperature_kwargs: Additional kwargs for temperature schedule
+
+        Examples:
+            >>> # KL divergence with polynomial schedule (default)
+            >>> optimizer = AdaSmoothESv2(params)
+
+            >>> # Rényi divergence with cosine annealing
+            >>> optimizer = AdaSmoothESv2(
+            ...     params,
+            ...     divergence='renyi',
+            ...     divergence_kwargs={'alpha': 2.0},
+            ...     temperature_schedule='cosine',
+            ...     temperature_kwargs={'beta_init': 10.0, 'beta_min': 0.1, 'total_iterations': 10000}
+            ... )
+
+            >>> # Chi-squared divergence with adaptive temperature
+            >>> optimizer = AdaSmoothESv2(
+            ...     params,
+            ...     divergence='chi2',
+            ...     temperature_schedule='adaptive'
+            ... )
         """
         defaults = dict(sigma=sigma)
         super().__init__(params, defaults)
 
         self.K = num_queries
         self.sigma = sigma
-        self.beta_init = beta_init
-        self.beta_decay = beta_decay
-        self.beta_schedule = beta_schedule
         self.baseline_type = baseline
         self.ema_alpha = ema_alpha
         self.iteration = 0
-        self.adaptive_beta_scheduler = adaptive_beta_scheduler  # Adaptive scheduler
 
         # EMA baseline state
         self.baseline_ema = None
+
+        # ===== Divergence setup =====
+        if isinstance(divergence, str):
+            div_kwargs = divergence_kwargs or {}
+            self.divergence = get_divergence(divergence, **div_kwargs)
+        else:
+            self.divergence = divergence
+
+        # ===== Temperature schedule setup =====
+        if isinstance(temperature_schedule, str):
+            temp_kwargs = temperature_kwargs or {}
+            # Set defaults if not provided
+            if 'beta_init' not in temp_kwargs:
+                temp_kwargs['beta_init'] = 10.0
+            if temperature_schedule == 'polynomial' and 'decay_rate' not in temp_kwargs:
+                temp_kwargs['decay_rate'] = 0.001
+            if temperature_schedule in ['exponential', 'polynomial', 'linear', 'cosine'] and 'beta_min' not in temp_kwargs:
+                temp_kwargs['beta_min'] = 0.01
+
+            self.temperature_schedule = get_temperature_schedule(temperature_schedule, **temp_kwargs)
+        else:
+            self.temperature_schedule = temperature_schedule
 
         # Compute total dimension
         self.dim = sum(p.numel() for group in self.param_groups for p in group['params'])
@@ -102,7 +156,8 @@ class AdaSmoothES(torch.optim.Optimizer):
         self.history = {
             'f_values': [], 'advantages': [], 'weights': [],
             'beta': [], 'sigma': [], 'c_mean': [],
-            'path_norm': [], 'baseline': []
+            'path_norm': [], 'baseline': [],
+            'divergence': [], 'temperature_name': []
         }
 
     def _initialize_state(self):
@@ -115,34 +170,20 @@ class AdaSmoothES(torch.optim.Optimizer):
                 state['pc'] = torch.zeros(d, device=param.device, dtype=param.dtype)
                 state['p_sigma'] = torch.zeros(d, device=param.device, dtype=param.dtype)
 
-    def _get_beta(self, f_values: torch.Tensor = None) -> float:
-        """
-        Temperature schedule.
+    def _get_beta(self) -> float:
+        """Get current temperature from schedule"""
+        beta = self.temperature_schedule.get_temperature(self.iteration)
 
-        Args:
-            f_values: Function values (required for adaptive schedulers)
+        # Update adaptive schedule if needed
+        if hasattr(self.temperature_schedule, 'update') and len(self.history['f_values']) > 0:
+            recent_loss = self.history['f_values'][-1].min()
+            self.temperature_schedule.update(recent_loss)
 
-        Returns:
-            Temperature β
-        """
-        # If using adaptive scheduler, compute β from function values
-        if self.adaptive_beta_scheduler is not None:
-            if f_values is None:
-                raise ValueError("f_values required for adaptive beta scheduler")
-            return self.adaptive_beta_scheduler.get_beta(f_values, self.iteration)
-
-        # Otherwise use fixed schedule
-        t = self.iteration
-        if self.beta_schedule == 'constant':
-            return self.beta_init
-        elif self.beta_schedule == 'exponential':
-            return self.beta_init * math.exp(-self.beta_decay * t)
-        else:  # polynomial
-            return self.beta_init / (1.0 + self.beta_decay * t)
+        return beta
 
     def _compute_baseline(self, f_values: torch.Tensor) -> float:
         """
-        Compute baseline for variance reduction (Theorem 6).
+        Compute baseline for variance reduction.
 
         Args:
             f_values: Function values tensor of shape (K,)
@@ -168,31 +209,25 @@ class AdaSmoothES(torch.optim.Optimizer):
 
     def _compute_weights(self, f_values: torch.Tensor, beta: float):
         """
-        Compute Boltzmann weights with baseline (Theorem 6).
+        Compute importance weights using the specified divergence.
 
-        w_k = softmax(-(f_k - b) / β)
+        Args:
+            f_values: Function values of shape (K,)
+            beta: Temperature parameter
 
-        Uses log-sum-exp trick for numerical stability.
+        Returns:
+            weights: Normalized importance weights
+            advantages: Advantages (f - baseline)
+            baseline: Baseline value
         """
         # Compute baseline
         b = self._compute_baseline(f_values)
 
-        # Advantage: A_k = f_k - b
+        # Compute advantages
         advantages = f_values - b
 
-        # Log weights with numerical stability
-        # log w_k = -A_k/β - logsumexp(-A/β)
-        log_weights = -advantages / beta
-
-        # Log-sum-exp trick
-        max_log_w = log_weights.max()
-        log_weights_stable = log_weights - max_log_w
-        weights = torch.exp(log_weights_stable)
-        weights = weights / weights.sum()
-
-        # Handle numerical issues
-        if torch.isnan(weights).any() or torch.isinf(weights).any():
-            weights = torch.ones_like(weights) / len(weights)
+        # Use divergence to compute weights
+        weights = self.divergence.compute_weights(f_values, beta, b)
 
         return weights, advantages, b
 
@@ -233,13 +268,17 @@ class AdaSmoothES(torch.optim.Optimizer):
         """
         Perform one optimization step.
 
-        Implements:
-        - Theorem 2: Moment matching for mean and variance
-        - Theorem 4: Stabilized additive covariance update
-        - Theorem 5: Evolution path
-        - Theorem 6: Baseline variance reduction
+        Implements the AdaSmoothES update with pluggable divergence and temperature.
+
+        Args:
+            closure: Function that evaluates the model and returns loss
+
+        Returns:
+            Weighted average loss
         """
         assert closure is not None, "Closure required"
+
+        beta_t = self._get_beta()
 
         # Current state
         theta_t = self._flatten_params()
@@ -273,19 +312,16 @@ class AdaSmoothES(torch.optim.Optimizer):
         Y = torch.tensor(Y, device=device, dtype=dtype)
         Z = torch.stack(Z)
 
-        # ===== 2. Get Temperature (may depend on Y for adaptive schedulers) =====
-        beta_t = self._get_beta(f_values=Y)
-
-        # ===== 3. Weights with Baseline (Theorem 6) =====
+        # ===== 2. Weights with Divergence =====
         W, advantages, baseline = self._compute_weights(Y, beta_t)
 
         # Effective mu_eff
         mu_eff_actual = 1.0 / (W ** 2).sum().item()
 
-        # ===== 4. Mean Update (Theorem 2: Moment Matching) =====
+        # ===== 3. Mean Update (Moment Matching) =====
         theta_new = torch.sum(W.unsqueeze(1) * X, dim=0)
 
-        # ===== 5. Evolution Paths (Theorem 5) =====
+        # ===== 4. Evolution Paths =====
         y_w = (theta_new - theta_t) / self.sigma
 
         # pc: for covariance
@@ -295,32 +331,32 @@ class AdaSmoothES(torch.optim.Optimizer):
         p_sigma_new = (1 - self.c_sigma) * p_sigma_t + \
                       math.sqrt(self.c_sigma * (2 - self.c_sigma) * mu_eff_actual) * (y_w / torch.sqrt(c_t + 1e-16))
 
-        # ===== 6. Covariance Update (Theorem 4: Stabilized Moment Matching) =====
+        # ===== 5. Covariance Update (Stabilized Moment Matching) =====
         Y_samples = (X - theta_t.unsqueeze(0)) / self.sigma
 
-        # Rank-one: history moment (Theorem 5)
+        # Rank-one: history moment
         rank_one = pc_new ** 2
 
-        # Rank-mu: current moment matching (Theorem 2)
+        # Rank-mu: current moment matching
         rank_mu = torch.sum(W.unsqueeze(1) * (Y_samples ** 2), dim=0)
 
-        # Additive update (Theorem 4)
+        # Additive update
         c_new = (1 - self.c1 - self.cmu) * c_t + self.c1 * rank_one + self.cmu * rank_mu
         c_new = torch.clamp(c_new, min=1e-16)
 
-        # ===== 7. Step-size Adaptation (CSA) =====
+        # ===== 6. Step-size Adaptation (CSA) =====
         p_sigma_norm = torch.norm(p_sigma_new).item()
         sigma_new = self.sigma * math.exp(
             (self.c_sigma / self.d_sigma) * (p_sigma_norm / self.chi_d - 1)
         )
         sigma_new = max(1e-16, min(sigma_new, 1e8))
 
-        # ===== 8. Apply Updates =====
+        # ===== 7. Apply Updates =====
         self._unflatten_to_params(theta_new)
         self._set_state_vectors(c_new, pc_new, p_sigma_new)
         self.sigma = sigma_new
 
-        # ===== 9. History =====
+        # ===== 8. History =====
         self.history['f_values'].append(Y.cpu().numpy())
         self.history['advantages'].append(advantages.cpu().numpy())
         self.history['weights'].append(W.cpu().numpy())
@@ -329,7 +365,27 @@ class AdaSmoothES(torch.optim.Optimizer):
         self.history['c_mean'].append(c_new.mean().item())
         self.history['path_norm'].append(p_sigma_norm)
         self.history['baseline'].append(baseline)
+        self.history['divergence'].append(self.divergence.name())
+        self.history['temperature_name'].append(self.temperature_schedule.name())
 
         self.iteration += 1
 
         return torch.sum(W * Y).item()
+
+    def get_info(self) -> dict:
+        """
+        Get information about current configuration.
+
+        Returns:
+            Dictionary with divergence, schedule, and parameter info
+        """
+        return {
+            'divergence': self.divergence.name(),
+            'temperature_schedule': self.temperature_schedule.name(),
+            'current_beta': self._get_beta(),
+            'current_sigma': self.sigma,
+            'iteration': self.iteration,
+            'num_queries': self.K,
+            'dimension': self.dim,
+            'baseline_type': self.baseline_type,
+        }

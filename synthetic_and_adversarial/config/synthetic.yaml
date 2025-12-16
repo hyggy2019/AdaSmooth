@@ -12,9 +12,10 @@ optimizers: # multiple optimizers for fair comparison
   # - twopoint  # Two-point central difference
   # - rl        # ES + fitness shaping (rank transformation)
   # - xnes      # xNES (adaptive covariance, natural gradients)
-  - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
+  # - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
   # - adasmooth # AdaSmooth-ZO (old implementation with low-rank/diagonal)
-  - adasmooth_es # AdaSmoothES (new: Boltzmann + SepCMA stability)
+  - adasmooth_es # AdaSmoothES v1 (Boltzmann + SepCMA stability)
+  # - adasmooth_es_v2 # AdaSmoothES v2 (modular: divergences + schedules)
   # - zoar_0      # ZoAR without history
   # - zoar        # ZoAR with history
   # - relizo      # ReLIZO
@@ -30,7 +31,7 @@ epsilon: 1.0e-8 # epsilon
 update_rule: radazo # "sgd", "adam", "radazo"
 
 # ---- # for ZO algorithm
-num_queries: 10 # number of query samples
+num_queries: 24 # number of query samples
                 # vanilla/es/rl: uses num_queries directions
                 # twopoint: uses num_queries//2 directions (matched budget)
 mu: 0.05 # zo eps
@@ -47,7 +48,7 @@ num_histories: 5 # number of histories (for zoar, zohs)
 
 # ---- # for SepCMAES (optional, will use defaults if not specified)
 # sigma: 0.1           # initial step size for CMA-ES (default: uses mu value)
-# population_size: null # population_size (null = auto: 4 + 3*log(d))
+population_size: 10    # Fair comparison: same as num_queries (default auto: 24 for d=1000)
 
 # ---- # for AdaSmoothZO (optional, will use defaults if not specified)
 # beta_init: 1.0       # initial temperature β_0 (default: 1.0)
@@ -55,6 +56,27 @@ num_histories: 5 # number of histories (for zoar, zohs)
 # beta_schedule: polynomial  # schedule type: 'constant', 'exponential', or 'polynomial'
 # Note: AdaSmoothZO uses lr=1.0 internally (not configurable)
 
-# ---- # for AdaSmoothES (new implementation)
+# ---- # for AdaSmoothES (v1 implementation)
 # Uses default parameters: beta_init=10.0, beta_decay=0.001, baseline='mean'
 # These defaults achieved best performance: ~1122 (vs SepCMAES ~980)
+
+# ---- # for AdaSmoothES v2 (modular implementation with divergences + schedules)
+# Divergence: 'kl', 'reverse_kl', 'chi2', 'renyi', 'tsallis', 'huber'
+# Schedule: 'constant', 'linear', 'exponential', 'polynomial', 'cosine', 'step', 'adaptive', 'cyclic'
+divergence: kl              # Default: KL divergence
+temperature_schedule: polynomial  # Default: polynomial decay
+beta_init: 10.0             # Initial temperature
+beta_decay: 0.001           # Decay rate for polynomial/exponential
+# beta_min: 0.01            # Minimum temperature (optional)
+# poly_power: 1.0           # Power for polynomial (optional)
+
+# For Rényi divergence:
+# divergence: renyi
+# renyi_alpha: 2.0
+
+# For cyclic schedule:
+# temperature_schedule: cyclic
+# beta_min: 5.0
+# beta_max: 15.0
+# cycle_length: 500
+# cyclic_mode: triangular
