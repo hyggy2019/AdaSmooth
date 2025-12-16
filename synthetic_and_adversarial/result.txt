@@ -1,0 +1,7 @@
+es optimized value: 457408.15625, Time taken: 10.63 seconds
+vanilla optimized value: 5230.33837890625, Time taken: 11.24 seconds
+twopoint optimized value: 1077.513427734375, Time taken: 10.07 seconds
+xnes optimized value: 443903.59375, Time taken: 92.63 seconds
+sepcmaes optimized value: 981.0087890625, Time taken: 28.16 seconds
+adasmooth optimized value: 381626.03125, Time taken: 10.08 seconds
+zoar optimized value: 1113.1080322265625, Time taken: 17.21 seconds

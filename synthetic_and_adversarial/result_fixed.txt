@@ -1,0 +1,9 @@
+Using device: cpu
+es optimized value: 457408.15625, Time taken: 10.44 seconds
+vanilla optimized value: 5230.33837890625, Time taken: 11.06 seconds
+twopoint optimized value: 1077.513427734375, Time taken: 9.97 seconds
+xnes optimized value: 500058009108480.0, Time taken: 85.37 seconds
+sepcmaes optimized value: 981.4692993164062, Time taken: 27.57 seconds
+adasmooth optimized value: 432653.90625, Time taken: 24.85 seconds
+zoar optimized value: 1113.1080322265625, Time taken: 17.29 seconds
+Total Time taken: 186.60 seconds

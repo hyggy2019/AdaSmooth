@@ -53,16 +53,26 @@ class Quadratic(SyntheticFunction):
     def forward(self) -> torch.Tensor:
         return 0.5 * torch.sum(self.x ** 2)
 
+class Rastrigin(SyntheticFunction):
+
+    def forward(self) -> torch.Tensor:
+        x = self.x
+        A = 10
+        d = self.dim
+
+        return A * d + torch.sum(x ** 2 - A * torch.cos(2 * torch.pi * x))
+
 def get_synthetic_funcs(
     name: str,
     x_init: torch.Tensor
 ) -> SyntheticFunction:
-    
+
     all_functions = {
         "ackley": Ackley,
         "levy": Levy,
         "rosenbrock": Rosenbrock,
         "quadratic": Quadratic,
+        "rastrigin": Rastrigin,
     }
 
     assert name in all_functions, f"Function {name} not found. Available functions: {list(all_functions.keys())}"

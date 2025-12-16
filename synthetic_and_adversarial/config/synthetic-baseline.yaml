@@ -1,13 +1,35 @@
 exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
 
 # experiment options
-func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic"
+func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic", "rastrigin"
 seed: 456
 dimension: 10000
 num_iterations: 20000
-optimizers: # multiple optimizers for fair comparison, valid for "zoo", "reinforce"
-  - zoo # ZOO Baseline
-  - reinforce # REINFORCE Baseline
+
+# optimizer comparison - comprehensive baseline tests
+optimizers:
+  # ===== Pure ES (no baseline) =====
+  # - es # Pure ES: ∇f ≈ (1/nσ) Σ F(θ+σε) · ε (highest variance, theoretical form)
+
+  # ===== One-point estimators (forward difference) =====
+  - vanilla # Vanilla ZO: ∇f ≈ (1/nμ) Σ [F(θ+με) - F(θ)] · ε
+  # - zoo # ZOO with baseline (requires baseline parameter below)
+  # - reinforce # REINFORCE with baseline (requires baseline parameter below)
+  # - rl # RL with fitness shaping (rank transformation)
+
+  # ===== Two-point estimators (central difference) =====
+  - twopoint # Two-point: ∇f ≈ (1/m) Σ [F(θ+με) - F(θ-με)]/(2μ) · ε (uses num_queries//2 directions)
+
+  # ===== Adaptive methods (covariance learning) =====
+  # - xnes # xNES: Exponential Natural Evolution Strategies (full covariance, O(d²))
+  # - sepcmaes # Sep-CMA-ES: Separable CMA-ES (diagonal covariance, high-dimensional)
+  # - adasmooth # AdaSmooth-ZO: Adaptive low-rank sampling (O(Kd))
+
+  # ===== Query reuse methods =====
+  - zoar # ZoAR with history (uses num_histories parameter)
+  # - zoar_0 # ZoAR without history
+  - relizo # ReLIZO with adaptive reuse
+  # - zohs # ZOHS with history smoothing
 
 # optimization options
 lr: 0.001
@@ -19,10 +41,16 @@ update_rule: radazo # "sgd", "adam", "radazo"
 
 # ---- # for ZO algorithm
 num_queries: 10 # number of query samples
-mu: 0.05 # zo eps
+                # vanilla/es/rl/zoo/reinforce: uses num_queries directions
+                # twopoint: uses num_queries//2 directions (matched budget)
+mu: 0.05 # zo eps (perturbation coefficient)
 
-# ---- # for RL RL w/ hiatory algorithm
-num_histories: 0 # number of histories
+# ---- # for RL RL w/ history algorithm
+num_histories: 5 # number of histories (for zoar, zohs)
+                 # set to 0 for zoar_0
 
-# ---- # for vanilla, rl baseline
-baseline: average # "single", "average"
+# ---- # for zoo, reinforce baseline
+baseline: average # "single" or "average"
+                  # single: use F(θ) as baseline
+                  # average: use mean of F(θ+με) as baseline
+                  # Note: only used by 'zoo' and 'reinforce' optimizers

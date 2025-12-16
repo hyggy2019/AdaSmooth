@@ -1,18 +1,23 @@
 exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuning"
 
 # experiment options
-func_name: levy # only valid for "ackley", "levy", "rosenbrock", "quadratic"
+func_name: rosenbrock # only valid for "ackley", "levy", "rosenbrock", "quadratic", "rastrigin"
 seed: 456
-dimension: 10000
-num_iterations: 20000
-optimizers: # multiple optimizers for fair comparison, valid for "fo", "zo", "rl", "rl_w_hoistory", "relizo", "zohs", "zohs_expavg"
-  # - fo
-  - vanilla # Vallina
-  # - rl # 
-  - zoar_0 # ZoAR without history
-  - zoar # ZoAR
-  - relizo # ReLIZO
-  - zohs # ZOHS
+dimension: 1000
+num_iterations: 10000
+optimizers: # multiple optimizers for fair comparison
+  # - fo        # first-order (true gradient, only for synthetic functions)
+  - es        # Pure ES (no baseline, highest variance)
+  - vanilla     # ES + single baseline (most common)
+  - twopoint  # Two-point central difference
+  # - rl        # ES + fitness shaping (rank transformation)
+  - xnes      # xNES (adaptive covariance, natural gradients)
+  - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
+  - adasmooth # AdaSmooth-ZO (adaptive low-rank sampling)
+  # - zoar_0      # ZoAR without history
+  - zoar        # ZoAR with history
+  # - relizo      # ReLIZO
+  # - zohs        # ZOHS
   # - zohs_expavg
 
 # optimization options
@@ -25,7 +30,26 @@ update_rule: radazo # "sgd", "adam", "radazo"
 
 # ---- # for ZO algorithm
 num_queries: 10 # number of query samples
+                # vanilla/es/rl: uses num_queries directions
+                # twopoint: uses num_queries//2 directions (matched budget)
 mu: 0.05 # zo eps
 
-# ---- # for RL RL w/ hiatory algorithm
-num_histories: 5 # number of histories
+# ---- # for RL RL w/ history algorithm
+num_histories: 5 # number of histories (for zoar, zohs)
+
+# ---- # for xNES (optional, will use defaults if not specified)
+# eta_mu: 1.0         # learning rate for mean update
+# eta_sigma: null     # learning rate for sigma update (auto if null)
+# eta_bmat: null      # learning rate for B matrix update (auto if null)
+# use_fshape: true    # whether to use fitness shaping
+# initial_sigma: 0.1  # initial step size for xNES (default: 0.1)
+
+# ---- # for SepCMAES (optional, will use defaults if not specified)
+# sigma: 0.1           # initial step size for CMA-ES (default: uses mu value)
+# population_size: null # population_size (null = auto: 4 + 3*log(d))
+
+# ---- # for AdaSmoothZO (optional, will use defaults if not specified)
+# beta_init: 1.0       # initial temperature β_0 (default: 1.0)
+# beta_decay: 0.05     # temperature decay rate (default: 0.05)
+# beta_schedule: polynomial  # schedule type: 'constant', 'exponential', or 'polynomial'
+# Note: AdaSmoothZO uses lr=1.0 internally (not configurable)

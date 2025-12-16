@@ -8,14 +8,19 @@ idx: 1 # image index
 seed: 456
 x_dim: 784 # attack tensor dimension, make sure be equal to image size
 num_iterations: 20000
-optimizers: # multiple optimizers for fair comparison, valid for "fo", "zo", "rl", "rl_w_hoistory", "relizo", "zohs", "zohs_expavg"
-  # - fo
-  - vanilla # Vallina
-  # - rl # 
-  - zoar_0 # ZoAR without history
-  - zoar # ZoAR
-  - relizo # ReLIZO
-  - zohs # ZOHS
+optimizers: # multiple optimizers for fair comparison
+  # - fo        # first-order (not applicable for black-box attacks)
+  # - es        # Pure ES (no baseline)
+  - vanilla     # ES + single baseline
+  # - rl        # ES + fitness shaping
+  # - xnes      # xNES (adaptive covariance)
+  # - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
+  # - adasmooth # AdaSmooth-ZO (adaptive low-rank sampling)
+  # - twopoint  # Two-point central difference
+  - zoar_0      # ZoAR without history
+  - zoar        # ZoAR with history
+  - relizo      # ReLIZO
+  - zohs        # ZOHS
   # - zohs_expavg
 
 # optimization options
@@ -28,7 +33,9 @@ update_rule: radazo # "sgd", "adam", "radazo"
 
 # ---- # for ZO algorithm
 num_queries: 2 # number of query samples
+               # vanilla/es/rl: uses num_queries directions
+               # twopoint: uses num_queries//2 directions
 mu: 0.5 # zo eps
 
-# ---- # for RL RL w/ hiatory algorithm
-num_histories: 5 # number of histories
+# ---- # for RL RL w/ history algorithm
+num_histories: 5 # number of histories (for zoar, zohs)
