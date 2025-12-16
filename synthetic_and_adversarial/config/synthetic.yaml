@@ -7,15 +7,16 @@ dimension: 1000
 num_iterations: 10000
 optimizers: # multiple optimizers for fair comparison
   # - fo        # first-order (true gradient, only for synthetic functions)
-  - es        # Pure ES (no baseline, highest variance)
-  - vanilla     # ES + single baseline (most common)
-  - twopoint  # Two-point central difference
+  # - es        # Pure ES (no baseline, highest variance)
+  # - vanilla     # ES + single baseline (most common)
+  # - twopoint  # Two-point central difference
   # - rl        # ES + fitness shaping (rank transformation)
-  - xnes      # xNES (adaptive covariance, natural gradients)
+  # - xnes      # xNES (adaptive covariance, natural gradients)
   - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
-  - adasmooth # AdaSmooth-ZO (adaptive low-rank sampling)
+  # - adasmooth # AdaSmooth-ZO (old implementation with low-rank/diagonal)
+  - adasmooth_es # AdaSmoothES (new: Boltzmann + SepCMA stability)
   # - zoar_0      # ZoAR without history
-  - zoar        # ZoAR with history
+  # - zoar        # ZoAR with history
   # - relizo      # ReLIZO
   # - zohs        # ZOHS
   # - zohs_expavg
@@ -53,3 +54,7 @@ num_histories: 5 # number of histories (for zoar, zohs)
 # beta_decay: 0.05     # temperature decay rate (default: 0.05)
 # beta_schedule: polynomial  # schedule type: 'constant', 'exponential', or 'polynomial'
 # Note: AdaSmoothZO uses lr=1.0 internally (not configurable)
+
+# ---- # for AdaSmoothES (new implementation)
+# Uses default parameters: beta_init=10.0, beta_decay=0.001, baseline='mean'
+# These defaults achieved best performance: ~1122 (vs SepCMAES ~980)

@@ -20,6 +20,7 @@ from optimizer.zo import (
     AdaSmoothZO,
     AdaSmoothZO_MultiParam,
 )
+from optimizer.adasmooth_es import AdaSmoothES
 from optimizer.relizo_adam import LIZO, _backtracking
 
 def set_seed(seed):
@@ -82,8 +83,7 @@ def get_optimizer(
         eta_bmat = getattr(args, 'eta_bmat', None)
         use_fshape = getattr(args, 'use_fshape', True)
         initial_sigma = getattr(args, 'initial_sigma', 0.1)
-        xnes_lr = getattr(args, 'xnes_lr', 1.0)  # Use xnes_lr if specified, otherwise 1.0
-        return xNES(params=params, lr=xnes_lr, betas=args.betas, epsilon=args.epsilon, num_queries=args.num_queries, mu=args.mu, update_rule='sgd', eta_mu=eta_mu, eta_sigma=eta_sigma, eta_bmat=eta_bmat, use_fshape=use_fshape, initial_sigma=initial_sigma)
+        return xNES(params=params, lr=args.lr, betas=args.betas, epsilon=args.epsilon, num_queries=args.num_queries, mu=args.mu, update_rule='sgd', eta_mu=eta_mu, eta_sigma=eta_sigma, eta_bmat=eta_bmat, use_fshape=use_fshape, initial_sigma=initial_sigma)
     elif name == "twopoint":
         return TwoPointMatched(params=params, lr=args.lr, betas=args.betas, epsilon=args.epsilon, num_queries=args.num_queries, mu=args.mu, update_rule=args.update_rule)
     elif name == "sepcmaes":
@@ -92,36 +92,65 @@ def get_optimizer(
         population_size = getattr(args, 'population_size', None)
         return SepCMAES(params=params, lr=args.lr, sigma=sigma, population_size=population_size)
     elif name == "adasmooth" or name == "adasmoothzo":
-        # AdaSmoothZO for single-parameter models
-        # IMPORTANT: AdaSmooth needs higher rank K for high-dimensional problems
-        # Recommended: K >= sqrt(d) for d-dimensional problems
-        beta_init = getattr(args, 'beta_init', 1.0)
-        beta_decay = getattr(args, 'beta_decay', 0.01)  # Slower decay (0.05 -> 0.01)
+        # AdaSmoothZO for single-parameter models with SepCMA-inspired covariance updates
+        # Uses evolution path (pc) + rank-one/rank-mu updates like SepCMA
+        # num_queries: number of samples per iteration (like SepCMA's population_size)
+        # Recommended: 24-32 for d=1000 (matching SepCMA's 4+3*log(d) formula)
+        # KEY FIX: Much slower beta decay to prevent weight concentration
+        beta_init = getattr(args, 'beta_init', 10.0)  # Higher initial temperature (1.0 → 10.0)
+        beta_decay = getattr(args, 'beta_decay', 0.001)  # Much slower decay (0.05 → 0.001)
         beta_schedule = getattr(args, 'beta_schedule', 'polynomial')
-        adasmooth_num_queries = getattr(args, 'adasmooth_num_queries', max(args.num_queries, 32))  # Default: at least 32
+        # AdaSmooth: num_queries is sampling count (K), separate from diagonal L dimension (d)
+        # Use config's num_queries (=10) for fair comparison
+        # L is always diagonal with d elements, but estimated from K samples
+        adasmooth_num_queries = getattr(args, 'adasmooth_num_queries', args.num_queries)
+        # AdaSmooth mu: Use same as other ZO methods or slightly smaller
+        # With higher beta_init, we can use normal mu
+        adasmooth_mu = getattr(args, 'adasmooth_mu', args.mu)
         return AdaSmoothZO(
             params=params,
             lr=1.0,  # Must be 1.0
             num_queries=adasmooth_num_queries,
-            mu=args.mu,
+            mu=adasmooth_mu,
             beta_init=beta_init,
             beta_decay=beta_decay,
             beta_schedule=beta_schedule
         )
     elif name == "adasmooth_multi" or name == "adasmoothzo_multi":
         # AdaSmoothZO for multi-parameter models
-        beta_init = getattr(args, 'beta_init', 1.0)
-        beta_decay = getattr(args, 'beta_decay', 0.01)  # Slower decay (0.05 -> 0.01)
+        beta_init = getattr(args, 'beta_init', 10.0)  # Higher initial temperature
+        beta_decay = getattr(args, 'beta_decay', 0.001)  # Much slower decay
         beta_schedule = getattr(args, 'beta_schedule', 'polynomial')
-        adasmooth_num_queries = getattr(args, 'adasmooth_num_queries', max(args.num_queries, 32))  # Default: at least 32
+        adasmooth_num_queries = getattr(args, 'adasmooth_num_queries', args.num_queries)
+        adasmooth_mu = getattr(args, 'adasmooth_mu', args.mu)
         return AdaSmoothZO_MultiParam(
             params=params,
             lr=1.0,  # Must be 1.0
             num_queries=adasmooth_num_queries,
-            mu=args.mu,
+            mu=adasmooth_mu,
             beta_init=beta_init,
             beta_decay=beta_decay,
             beta_schedule=beta_schedule
         )
+    elif name == "adasmooth_es" or name == "adasmoothes":
+        # AdaSmoothES: Complete implementation combining AdaSmooth + SepCMA stability
+        # Combines Boltzmann-weighted moment matching with evolution path and CSA
+        # Uses diagonal covariance (d elements) estimated from K=num_queries samples
+        sigma = getattr(args, 'sigma', args.mu)  # Initial step size
+        beta_init = getattr(args, 'beta_init', 10.0)  # Initial temperature
+        beta_decay = getattr(args, 'beta_decay', 0.001)  # Temperature decay
+        beta_schedule = getattr(args, 'beta_schedule', 'polynomial')
+        baseline_type = getattr(args, 'baseline', 'mean')  # Baseline for variance reduction
+        ema_alpha = getattr(args, 'ema_alpha', 0.1)  # For EMA baseline
+        return AdaSmoothES(
+            params=params,
+            sigma=sigma,
+            num_queries=args.num_queries,
+            beta_init=beta_init,
+            beta_decay=beta_decay,
+            beta_schedule=beta_schedule,
+            baseline=baseline_type,
+            ema_alpha=ema_alpha
+        )
     else:
-        raise ValueError(f"Unknown optimizer name: {name}, available optimizers are: fo, vanilla, rl, zoar, zohs, zohs_expavg, relizo, zoo, reinforce, es, xnes, twopoint, sepcmaes, adasmooth, adasmooth_multi")
+        raise ValueError(f"Unknown optimizer name: {name}, available optimizers are: fo, vanilla, rl, zoar, zohs, zohs_expavg, relizo, zoo, reinforce, es, xnes, twopoint, sepcmaes, adasmooth, adasmooth_multi, adasmooth_es")

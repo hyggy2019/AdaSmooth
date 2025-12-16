@@ -850,17 +850,37 @@ class AdaSmoothZO(ZerothOrderOptimizer):
             'L_norms': []
         }
 
+    def _get_dim(self):
+        """Get total parameter dimension"""
+        for group in self.param_groups:
+            for param in group['params']:
+                return param.numel()
+        return 1000  # Default fallback
+
     def _initialize_L(self):
-        """Initialize low-rank smoothing matrix L_0 ∈ R^(d×K) for each param"""
+        """Initialize smoothing matrix L_0
+
+        Always use diagonal L (stored as d-dim vector) for efficiency
+        Similar to SepCMAES diagonal covariance
+        """
         for group in self.param_groups:
             for param in group['params']:
                 state = self.state[param]
                 d = param.numel()
-                state['L'] = self.initial_sigma * torch.randn(
-                    d, self.K,
-                    device=param.device,
-                    dtype=param.dtype
+
+                # Always use diagonal L: store as vector of length d
+                state['L'] = self.initial_sigma * torch.ones(
+                    d, device=param.device, dtype=param.dtype
                 )
+                state['L_is_diagonal'] = True
+
+    def _initialize_evolution_path(self):
+        """Initialize evolution path pc (like SepCMA) for cumulative gradient tracking"""
+        for group in self.param_groups:
+            for param in group['params']:
+                state = self.state[param]
+                d = param.numel()
+                state['pc'] = torch.zeros(d, device=param.device, dtype=param.dtype)
 
     def _get_beta(self) -> float:
         """Get current temperature β_t"""
@@ -902,41 +922,61 @@ class AdaSmoothZO(ZerothOrderOptimizer):
             raise ValueError("No parameters to optimize")
 
         state = self.state[param]
-        L_t = state['L']  # Shape: (d, K)
-        d, K = L_t.shape
+        L_t = state['L']
+        is_diagonal = state.get('L_is_diagonal', False)
 
         # Flatten current parameter
         theta_t = param.data.view(-1)  # Shape: (d,)
+        d = theta_t.shape[0]
 
-        # ===== 1. Low-Rank Sampling =====
+        # ===== 1. Sampling (diagonal or low-rank) =====
         X = []  # Candidate solutions
         Y = []  # Function values
 
-        for k in range(K):
-            # Sample from latent space: u ~ N(0, I_K)
-            u = torch.randn(K, device=param.device, dtype=param.dtype)
+        if is_diagonal:
+            # Diagonal L: Sample directly in parameter space
+            # L is (d,) vector, x = θ + L ⊙ u where u ~ N(0, I_d)
+            for k in range(self.K):
+                u = torch.randn(d, device=param.device, dtype=param.dtype)
+                x_k = theta_t + L_t * u  # Element-wise multiplication
+                # Set parameter and evaluate
+                param.data = x_k.view_as(param)
+                f_val = closure()
+                if isinstance(f_val, torch.Tensor):
+                    f_val = f_val.item()
+                X.append(x_k)
+                Y.append(f_val)
+        else:
+            # Low-rank L: Sample in latent space
+            # L is (d, K) matrix, x = θ + L @ u where u ~ N(0, I_K)
+            K = L_t.shape[1]
+            for k in range(K):
+                u = torch.randn(K, device=param.device, dtype=param.dtype)
+                x_k = theta_t + torch.matmul(L_t, u)
 
-            # Map to parameter space: x = θ + L·u
-            x_k = theta_t + torch.matmul(L_t, u)
+                # Set parameter and evaluate
+                param.data = x_k.view_as(param)
+                f_val = closure()
 
-            # Set parameter and evaluate
-            param.data = x_k.view_as(param)
-            f_val = closure()
+                if isinstance(f_val, torch.Tensor):
+                    f_val = f_val.item()
 
-            if isinstance(f_val, torch.Tensor):
-                f_val = f_val.item()
-
-            X.append(x_k)
-            Y.append(f_val)
+                X.append(x_k)
+                Y.append(f_val)
 
         # Stack to tensors
         X = torch.stack(X)  # Shape: (K, d)
         Y = torch.tensor(Y, device=param.device, dtype=param.dtype)
 
-        # ===== 2. Compute Weights (KL-divergence) =====
+        # ===== 2. Compute Weights (KL-divergence with baseline) =====
+        # KEY FIX: Subtract baseline (mean) to get advantages
+        # This prevents weight concentration when function values are large
+        baseline = Y.mean()  # Baseline: average function value
+        advantages = Y - baseline  # Advantages: relative performance
+
         # Exponential weighting with numerical stability
         # Use log-sum-exp trick to avoid overflow/underflow
-        log_weights = -Y / beta_t
+        log_weights = -advantages / beta_t
         log_weights = log_weights - log_weights.max()  # Numerical stability
         V = torch.exp(log_weights)
 
@@ -951,20 +991,28 @@ class AdaSmoothZO(ZerothOrderOptimizer):
         # θ_{t+1} = Σ w_k · x_k
         theta_new = torch.sum(W.unsqueeze(1) * X, dim=0)  # Shape: (d,)
 
-        # ===== 4. Update Smoothing Matrix (Low-Rank) =====
+        # ===== 4. Update Smoothing Matrix =====
         # Compute residuals: x_k - θ_{t+1}
         residuals = X - theta_new.unsqueeze(0)  # Shape: (K, d)
 
-        # Weighted residuals: √w_k · (x_k - θ_{t+1})
+        # Weighted residuals: c_k = √w_k · (x_k - θ_{t+1})
         weighted_residuals = torch.sqrt(W).unsqueeze(1) * residuals  # (K, d)
 
-        # Stack as columns: L_{t+1} = [c_1, c_2, ..., c_K]
-        L_new = weighted_residuals.T  # Shape: (d, K)
+        if is_diagonal:
+            # Diagonal L: Compute element-wise standard deviation
+            # L_new[i] = sqrt(Σ_k w_k · (x_k[i] - θ_new[i])^2)
+            # This is equivalent to the diagonal of sqrt(LL^T)
+            weighted_sq_residuals = W.unsqueeze(1) * (residuals ** 2)  # (K, d)
+            L_new = torch.sqrt(weighted_sq_residuals.sum(dim=0) + 1e-8)  # (d,)
+        else:
+            # Low-rank L: Stack weighted residuals as columns (original AdaSmooth)
+            # L_{t+1} = [c_1, c_2, ..., c_K] ∈ R^(d × K)
+            L_new = weighted_residuals.T  # Shape: (d, K)
 
         # Update L in state
         state['L'] = L_new
 
-        # ===== 5. Set pseudo-gradient to achieve θ_new via SGD =====
+        # ===== 6. Set pseudo-gradient to achieve θ_new via SGD =====
         # We want: θ ← θ - lr·grad = θ_new
         # So: grad = (θ - θ_new) / lr
         lr = self.param_groups[0]['lr']
@@ -973,7 +1021,7 @@ class AdaSmoothZO(ZerothOrderOptimizer):
         # Set gradient
         param.grad = pseudo_grad.view_as(param)
 
-        # ===== 6. Track History =====
+        # ===== 7. Track History =====
         self.history['f_values'].append(Y.cpu().numpy())
         self.history['weights'].append(W.cpu().numpy())
         self.history['beta'].append(beta_t)
