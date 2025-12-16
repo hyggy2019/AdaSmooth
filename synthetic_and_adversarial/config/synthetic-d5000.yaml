@@ -1,10 +1,10 @@
 exp: synthetic
 
-# Experiment: d=5000, 15000 iterations (TODO.md)
+# Experiment: d=5000, 20000 iterations (TODO.md)
 func_name: rosenbrock
 seed: 456
 dimension: 5000
-num_iterations: 15000
+num_iterations: 20000
 
 optimizers:
   - vanilla

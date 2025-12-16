@@ -4,7 +4,7 @@ exp: synthetic # only valid for "synthetic", "cutest", "adversarial", "fine-tuni
 func_name: rosenbrock # only valid for "ackley", "levy", "rosenbrock", "quadratic", "rastrigin"
 seed: 456
 dimension: 1000
-num_iterations: 10000
+num_iterations: 20000
 optimizers: # TODO.md Algorithm comparison
   - vanilla      # ES + single baseline (baseline for speedup)
   - zoar         # ZoAR with history

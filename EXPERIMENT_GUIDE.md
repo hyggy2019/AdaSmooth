@@ -13,8 +13,8 @@
 **维度与迭代次数**:
 | 维度 (d) | 迭代次数 | 配置文件 |
 |---------|---------|----------|
-| 1000 | 10000 | `config/synthetic.yaml` |
-| 5000 | 15000 | `config/synthetic-d5000.yaml` |
+| 1000 | 20000 | `config/synthetic.yaml` |
+| 5000 | 20000 | `config/synthetic-d5000.yaml` |
 | 10000 | 20000 | `config/synthetic-d10000.yaml` |
 
 **测试算法**:
