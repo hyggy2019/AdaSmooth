@@ -5,22 +5,14 @@ func_name: rosenbrock # only valid for "ackley", "levy", "rosenbrock", "quadrati
 seed: 456
 dimension: 1000
 num_iterations: 10000
-optimizers: # multiple optimizers for fair comparison
-  # - fo        # first-order (true gradient, only for synthetic functions)
-  # - es        # Pure ES (no baseline, highest variance)
-  # - vanilla     # ES + single baseline (most common)
-  # - twopoint  # Two-point central difference
-  # - rl        # ES + fitness shaping (rank transformation)
-  # - xnes      # xNES (adaptive covariance, natural gradients)
-  # - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
-  # - adasmooth # AdaSmooth-ZO (old implementation with low-rank/diagonal)
-  - adasmooth_es # AdaSmoothES v1 (Boltzmann + SepCMA stability)
-  # - adasmooth_es_v2 # AdaSmoothES v2 (modular: divergences + schedules)
-  # - zoar_0      # ZoAR without history
-  # - zoar        # ZoAR with history
-  # - relizo      # ReLIZO
-  # - zohs        # ZOHS
-  # - zohs_expavg
+optimizers: # TODO.md Algorithm comparison
+  - vanilla      # ES + single baseline (baseline for speedup)
+  - zoar         # ZoAR with history
+  - relizo       # ReLIZO
+  - twopoint     # Two-point central difference
+  - zohs         # ZOHS
+  - sepcmaes     # Sep-CMA-ES (separable covariance, high-dimensional)
+  - adasmooth_es # AdaSmoothES v1 (BEST: 986.65 @ K=10)
 
 # optimization options
 lr: 0.001
@@ -31,7 +23,7 @@ epsilon: 1.0e-8 # epsilon
 update_rule: radazo # "sgd", "adam", "radazo"
 
 # ---- # for ZO algorithm
-num_queries: 24 # number of query samples
+num_queries: 10 # number of query samples (default: 10 for fair comparison)
                 # vanilla/es/rl: uses num_queries directions
                 # twopoint: uses num_queries//2 directions (matched budget)
 mu: 0.05 # zo eps
@@ -56,9 +48,12 @@ population_size: 10    # Fair comparison: same as num_queries (default auto: 24 
 # beta_schedule: polynomial  # schedule type: 'constant', 'exponential', or 'polynomial'
 # Note: AdaSmoothZO uses lr=1.0 internally (not configurable)
 
-# ---- # for AdaSmoothES (v1 implementation)
-# Uses default parameters: beta_init=10.0, beta_decay=0.001, baseline='mean'
-# These defaults achieved best performance: ~1122 (vs SepCMAES ~980)
+# ---- # for AdaSmoothES (v1 implementation) - BEST CONFIGURATION
+# Adaptive beta scheduler: CMA Match + Decay (best for K=10)
+# Performance: 986.65 (beats SepCMAES 1091.95 by 9.6%)
+adaptive_beta: cma_match     # Best adaptive scheduler
+cma_decay: 0.001             # Decay rate for CMA Match
+baseline: mean               # Baseline type for variance reduction
 
 # ---- # for AdaSmoothES v2 (modular implementation with divergences + schedules)
 # Divergence: 'kl', 'reverse_kl', 'chi2', 'renyi', 'tsallis', 'huber'

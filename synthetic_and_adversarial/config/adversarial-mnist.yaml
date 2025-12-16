@@ -1,0 +1,44 @@
+exp: adversarial
+
+# Adversarial Attack: MNIST
+dataset: mnist
+model: cnn
+idx: 0  # Image index to attack
+seed: 456
+
+# Attack settings
+num_iterations: 3000
+epsilon: 0.3  # L_inf perturbation budget
+
+# Device
+device: cuda  # or cpu
+
+# Algorithm comparison (as per TODO.md)
+optimizers:
+  - vanilla
+  - zoar
+  - relizo
+  - zohs
+  - sepcmaes
+  - adasmooth_es
+
+# Optimization options
+lr: 0.001
+betas: [0.9, 0.99]
+epsilon_opt: 1.0e-8
+update_rule: radazo
+
+# ZO algorithm settings
+num_queries: 10
+mu: 0.05
+
+# For ZO with history
+num_histories: 5
+
+# For SepCMAES
+population_size: 10
+
+# AdaSmoothES - Best Configuration
+adaptive_beta: cma_match
+cma_decay: 0.001
+baseline: mean

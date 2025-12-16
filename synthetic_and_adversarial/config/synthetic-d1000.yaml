@@ -1,0 +1,38 @@
+exp: synthetic
+
+# Experiment: d=1000, 10000 iterations
+func_name: rosenbrock  # Will test: rosenbrock, ackley, rastrigin
+seed: 456
+dimension: 1000
+num_iterations: 10000
+
+# Algorithm comparison (as per TODO.md)
+optimizers:
+  - vanilla
+  - zoar
+  - relizo
+  - twopoint
+  - zohs
+  - sepcmaes
+  - adasmooth_es
+
+# Optimization options
+lr: 0.001
+betas: [0.9, 0.99]
+epsilon: 1.0e-8
+update_rule: radazo
+
+# ZO algorithm settings
+num_queries: 10
+mu: 0.05
+
+# For ZO with history
+num_histories: 5
+
+# For SepCMAES
+population_size: 10
+
+# AdaSmoothES - Best Configuration
+adaptive_beta: cma_match
+cma_decay: 0.001
+baseline: mean

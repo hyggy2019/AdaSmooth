@@ -7,21 +7,15 @@ dataset: mnist # only valid for "mnist", "cifar10"
 idx: 1 # image index
 seed: 456
 x_dim: 784 # attack tensor dimension, make sure be equal to image size
-num_iterations: 20000
-optimizers: # multiple optimizers for fair comparison
-  # - fo        # first-order (not applicable for black-box attacks)
-  # - es        # Pure ES (no baseline)
-  - vanilla     # ES + single baseline
-  # - rl        # ES + fitness shaping
-  # - xnes      # xNES (adaptive covariance)
-  # - sepcmaes  # Sep-CMA-ES (separable covariance, high-dimensional)
-  # - adasmooth # AdaSmooth-ZO (adaptive low-rank sampling)
-  # - twopoint  # Two-point central difference
-  - zoar_0      # ZoAR without history
-  - zoar        # ZoAR with history
-  - relizo      # ReLIZO
-  - zohs        # ZOHS
-  # - zohs_expavg
+num_iterations: 3000  # TODO.md: adversarial attack iterations
+optimizers: # TODO.md Algorithm comparison
+  - vanilla      # ES + single baseline (baseline for speedup)
+  - zoar         # ZoAR with history
+  - relizo       # ReLIZO
+  - twopoint     # Two-point central difference
+  - zohs         # ZOHS
+  - sepcmaes     # Sep-CMA-ES
+  - adasmooth_es # AdaSmoothES (best configuration)
 
 # optimization options
 lr: 0.01
@@ -32,10 +26,16 @@ epsilon: 1.0e-8 # epsilon
 update_rule: radazo # "sgd", "adam", "radazo"
 
 # ---- # for ZO algorithm
-num_queries: 2 # number of query samples
-               # vanilla/es/rl: uses num_queries directions
-               # twopoint: uses num_queries//2 directions
-mu: 0.5 # zo eps
+num_queries: 10 # number of query samples (consistent with synthetic)
+mu: 0.05 # zo eps
 
 # ---- # for RL RL w/ history algorithm
 num_histories: 5 # number of histories (for zoar, zohs)
+
+# ---- # for SepCMAES
+population_size: 10
+
+# ---- # for AdaSmoothES (best configuration)
+adaptive_beta: cma_match
+cma_decay: 0.001
+baseline: mean

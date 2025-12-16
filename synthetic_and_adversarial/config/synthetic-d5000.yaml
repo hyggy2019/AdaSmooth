@@ -1,0 +1,31 @@
+exp: synthetic
+
+# Experiment: d=5000, 15000 iterations (TODO.md)
+func_name: rosenbrock
+seed: 456
+dimension: 5000
+num_iterations: 15000
+
+optimizers:
+  - vanilla
+  - zoar
+  - relizo
+  - twopoint
+  - zohs
+  - sepcmaes
+  - adasmooth_es
+
+lr: 0.001
+betas: [0.9, 0.99]
+epsilon: 1.0e-8
+update_rule: radazo
+
+num_queries: 10
+mu: 0.05
+num_histories: 5
+population_size: 10
+
+# AdaSmoothES best configuration
+adaptive_beta: cma_match
+cma_decay: 0.001
+baseline: mean
